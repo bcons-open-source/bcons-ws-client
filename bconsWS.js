@@ -1,7 +1,8 @@
-// This class establishes and manages a WebSocket connection to the bcons server for message handling.
-
-export class BconsWS
-{
+/**
+ * WebSocket client for bcons server communication.
+ * Handles connection management, authentication, and message handling.
+ */
+export class BconsWS {
   // Class properties that can be customized via constructor options.
 
   // User token required for authentication and message reception on the bcons server.
@@ -39,35 +40,28 @@ export class BconsWS
   // Currently active WebSocket server URL
   currentWsServer = "wss://bcons.dev/fry";
 
-  constructor(options)
-  {
+  constructor(options) {
     // Overwrite default options
-    [
-      "userToken", "wsServer", "device", "onMessage", "msgLog", "errLog"
-    ].forEach(key =>
-    {
-      if (typeof options[key] !== "undefined")
-      {
-        this[key] = options[key];
+    ["userToken", "wsServer", "device", "onMessage", "msgLog", "errLog"].forEach(
+      (key) => {
+        if (typeof options[key] !== "undefined") {
+          this[key] = options[key];
+        }
       }
-    });
+    );
 
     this.currentWsServer = this.wsServer;
   }
 
-  // Connect to Fry
-  connect()
-  {
+  connect() {
     // A user token is mandatory
-    if (!this.userToken)
-    {
+    if (!this.userToken) {
       this.logErr("User token required for BconsWS init");
       return;
     }
 
     // We also need a server to connect to
-    if (!this.currentWsServer)
-    {
+    if (!this.currentWsServer) {
       this.logErr("No Fry server provided, aborting.");
       return;
     }
@@ -75,8 +69,7 @@ export class BconsWS
     this.log("Connecting to Fry");
 
     // Only connect if not connecting (0), open (1) or closing (2)
-    if (this.ws && this.ws.readyState != 3)
-    {
+    if (this.ws && this.ws.readyState != 3) {
       this.log("Websocket readyState is", this.ws.readyState, ". Aborting");
       return;
     }
@@ -87,30 +80,28 @@ export class BconsWS
     this.ws.onopen = () => {
       this.log("[ws] Connection established");
       this.reconnectCount = 0;
-      this.ws.send(`{"e": "auth", "userToken":"${this.userToken}", "device":"${this.device}"}`);
+      this.ws.send(
+        `{"e": "auth", "userToken":"${this.userToken}", "device":"${this.device}"}`
+      );
     };
 
-    this.ws.onclose = e => {
-      if (e.wasClean)
-      {
+    this.ws.onclose = (e) => {
+      if (e.wasClean) {
         this.log("WS connection closed clean");
         this.log(e);
-        if (e.code == 302)
-        {
+        if (e.code == 302) {
           this.currentWsServer = e.reason;
           this.log("Forwarding to", this.currentWsServer);
           this.connect();
         }
 
-        if (e.code > 400 && e.code < 500)
-        {
+        if (e.code > 400 && e.code < 500) {
           const content = { errorCode: e.code, reason: e.reason };
-          if (this.onMessage)
+          if (this.onMessage) {
             setTimeout(() => this.onMessage(content), 3000);
+          }
         }
-      }
-      else
-      {
+      } else {
         // Server closed dirty, try to reconnect
         this.log(
           "Disconnected, will try to reconnect. Retry count:",
@@ -121,80 +112,81 @@ export class BconsWS
         ++this.reconnectCount;
 
         // Increase reconnection time to avoid ddosing the server
-        if (this.reconnectCount > 20)
+        if (this.reconnectCount > 20) {
           retry = 10000;
-        else if (this.reconnectCount > 10)
+        } else if (this.reconnectCount > 10) {
           retry = 7000;
-        else if (this.reconnectCount > 5)
+        } else if (this.reconnectCount > 5) {
           retry = 5000;
+        }
 
         // After 5 retries switch to the server provided in the constructor.
         // This allows the load balancer to redirect us to a live server.
-        if (this.reconnectCount > 5 && this.currentWsServer != this.wsServer)
-        {
+        if (this.reconnectCount > 5 && this.currentWsServer != this.wsServer) {
           this.log("Switching to", this.wsServer);
           this.currentWsServer = this.wsServer;
           retry = 1000;
         }
 
-        if (this.reconnectTimerId)
+        if (this.reconnectTimerId) {
           clearTimeout(this.reconnectTimerId);
+        }
         this.reconnectTimerId = setTimeout(() => this.connect(), retry);
       }
     };
 
-    this.ws.onerror = error => {
+    this.ws.onerror = (error) => {
       this.logErr(`[ws]`, error);
     };
 
-    this.ws.onmessage = msg => {
-      try
-      {
+    this.ws.onmessage = (msg) => {
+      try {
         const data = JSON.parse(msg.data);
 
         // Call the provided callback
-        if (this.onMessage)
+        if (this.onMessage) {
           this.onMessage(data);
+        }
+      } catch (e) {
+        this.logErr(e);
       }
-      catch (e) {this.logErr(e);}
     };
   }
 
-  // Sends a message to Fry
-  send(message)
-  {
+  send(message) {
     // We can only send if socket is open
-    if (this.ws.readyState != 1)
+    if (this.ws.readyState != 1) {
       return;
+    }
 
-    if (typeof message != "string")
+    if (typeof message != "string") {
       message = JSON.stringify(message);
+    }
 
     this.ws.send(message);
   }
 
-  // Disconnect from Fry
-  disconnect()
-  {
-    this.log(("Closing WS"));
-    if (this.ws)
+  disconnect() {
+    this.log("Closing WS");
+    if (this.ws) {
       this.ws.close();
+    }
   }
 
-  // Logs a message to the provided callback or the console
-  log(...params)
-  {
-    if (this.msgLog)
+  log(...params) {
+    if (this.msgLog) {
       this.msgLog(...params);
-    else console.log(...params);// eslint-disable-line no-console
+    } else {
+      console.log(...params); // eslint-disable-line no-console
+    }
   }
 
-  // Logs a message to the provided callback or the console
-  logErr(...params)
-  {
-    if (this.errLog)
+  logErr(...params) {
+    if (this.errLog) {
       this.errLog(...params);
-    else console.error(...params);
+    } else {
+      console.error(...params);
+    }
   }
 }
 
