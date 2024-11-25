@@ -37,20 +37,31 @@ export class BconsWS {
   // Timer ID for reconnection attempts
   reconnectTimerId = null;
 
+  // Interval ID for ping messages
+  pingIntervalId = null;
+
   // Currently active WebSocket server URL
   currentWsServer = "wss://bcons.dev/fry";
 
   constructor(options) {
     // Overwrite default options
-    ["userToken", "wsServer", "device", "onMessage", "msgLog", "errLog"].forEach(
-      (key) => {
-        if (typeof options[key] !== "undefined") {
-          this[key] = options[key];
-        }
+    [
+      "userToken",
+      "wsServer",
+      "device",
+      "onMessage",
+      "msgLog",
+      "errLog",
+    ].forEach((key) => {
+      if (typeof options[key] !== "undefined") {
+        this[key] = options[key];
       }
-    );
+    });
 
     this.currentWsServer = this.wsServer;
+    this.device += "_" + new Date().getMilliseconds();
+
+    return this;
   }
 
   connect() {
@@ -78,14 +89,18 @@ export class BconsWS {
     this.ws = new WebSocket(this.currentWsServer);
 
     this.ws.onopen = () => {
-      this.log("[ws] Connection established");
+      this.log("[ws] Connection established", this.device);
       this.reconnectCount = 0;
+
       this.ws.send(
         `{"e": "auth", "userToken":"${this.userToken}", "device":"${this.device}"}`
       );
     };
 
     this.ws.onclose = (e) => {
+      if (this.pingIntervalId)
+        clearInterval(this.pingIntervalId);
+
       if (e.wasClean) {
         this.log("WS connection closed clean");
         this.log(e);
@@ -137,11 +152,24 @@ export class BconsWS {
 
     this.ws.onerror = (error) => {
       this.logErr(`[ws]`, error);
+
+      if (this.pingIntervalId)
+        clearInterval(this.pingIntervalId);
     };
 
     this.ws.onmessage = (msg) => {
       try {
         const data = JSON.parse(msg.data);
+
+        // Pong and auth ok messages will be handled internally
+        if (data.e == "authOk") {
+          this.pingIntervalId = setInterval(() => {
+            this.send({ e: "ping" });
+          }, 30000);
+        }
+
+        if (data.e == "pong" || data.e == "authOk")
+          return;
 
         // Call the provided callback
         if (this.onMessage) {
@@ -149,6 +177,9 @@ export class BconsWS {
         }
       } catch (e) {
         this.logErr(e);
+
+        if (this.pingIntervalId)
+          clearInterval(this.pingIntervalId);
       }
     };
   }
@@ -156,6 +187,9 @@ export class BconsWS {
   send(message) {
     // We can only send if socket is open
     if (this.ws.readyState != 1) {
+      if (this.pingIntervalId)
+        clearInterval(this.pingIntervalId);
+
       return;
     }
 
