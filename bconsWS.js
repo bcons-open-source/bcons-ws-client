@@ -59,7 +59,6 @@ export class BconsWS {
     });
 
     this.currentWsServer = this.wsServer;
-    this.device += "_" + new Date().getMilliseconds();
 
     return this;
   }
@@ -79,6 +78,11 @@ export class BconsWS {
 
     this.log("Connecting to Fry");
 
+    // To identify multiple connections from inside the same instance of this
+    // class we will append a random string to the device identifier when
+    // connecting.
+    const connectedDevice = this.device + "_" + new Date().getMilliseconds();
+
     // Only connect if not connecting (0), open (1) or closing (2)
     if (this.ws && this.ws.readyState != 3) {
       this.log("Websocket readyState is", this.ws.readyState, ". Aborting");
@@ -89,11 +93,11 @@ export class BconsWS {
     this.ws = new WebSocket(this.currentWsServer);
 
     this.ws.onopen = () => {
-      this.log("[ws] Connection established", this.device);
+      this.log("[ws] Connection established", connectedDevice);
       this.reconnectCount = 0;
 
       this.ws.send(
-        `{"e": "auth", "userToken":"${this.userToken}", "device":"${this.device}"}`
+        `{"e": "auth", "userToken":"${this.userToken}", "device":"${connectedDevice}"}`
       );
     };
 
